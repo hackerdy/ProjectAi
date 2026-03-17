@@ -1,0 +1,24 @@
+{
+  "name": "projectai",
+  "version": "1.0.0",
+  "description": "Autonomous academic research and writing system with multi-agent AI",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "ingest": "cd backend && npm run ingest"
+  },
+  "overrides": {
+    "langsmith": "^0.4.6"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+

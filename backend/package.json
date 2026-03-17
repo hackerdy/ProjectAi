@@ -1,0 +1,45 @@
+{
+  "name": "projectai-backend",
+  "version": "1.0.0",
+  "description": "Multi-agent AI backend using LangGraph.js for autonomous academic project research and writing",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "ingest": "tsx src/scripts/ingestDocuments.ts",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/genai": "^0.7.0",
+    "@langchain/core": "^1.1.32",
+    "@langchain/langgraph": "^0.2.0",
+    "@pinecone-database/pinecone": "^3.0.0",
+    "appwrite": "^16.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "langsmith": "^0.5.10",
+    "multer": "^2.1.1",
+    "node-fetch": "^3.3.2",
+    "pdf-parse": "^1.1.1",
+    "uuid": "^10.0.0",
+    "ws": "^8.17.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.11",
+    "@types/node": "^20.14.0",
+    "@types/pdf-parse": "^1.1.4",
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.5.10",
+    "tsx": "^4.16.0",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
