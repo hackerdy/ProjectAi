@@ -49,8 +49,8 @@ projectai/
 | Backend | Node.js, TypeScript, Express |
 | Agent Engine | LangGraph.js (`@langchain/langgraph`) |
 | LLM Orchestration | Gemini 2.5 Pro (`gemini-2.5-pro`) |
-| LLM Research/Writing | Gemini 2.0 Flash (`gemini-2.0-flash`) |
-| Embeddings | Gemini `text-embedding-004` |
+| LLM Research/Writing | Gemini 2.5 Flash (`gemini-2.5-flash`) |
+| Embeddings | Gemini `gemini-embedding-001` (override: `GEMINI_EMBEDDING_MODEL`) |
 | Vector Database | Pinecone (with `style_id` metadata filtering) |
 | Backend/BaaS | Appwrite (job tracking, document storage) |
 | Web Search | Tavily Search API |
@@ -113,6 +113,10 @@ cp frontend/.env.example frontend/.env.local
 
 Required environment variables:
 - `GEMINI_API_KEY` — Google AI Studio API key
+- `GEMINI_ORCHESTRATOR_MODEL` — Optional orchestration model override (default: `gemini-2.5-pro`)
+- `GEMINI_FLASH_MODEL` — Optional research/writing model override (default: `gemini-2.5-flash`)
+- `GEMINI_TEXT_MODEL_FALLBACKS` — Optional comma-separated fallback text models
+- `GEMINI_EMBEDDING_MODEL` — Optional embedding model override (default: `gemini-embedding-001`)
 - `TAVILY_API_KEY` — Tavily Search API key
 - `ZYTE_API_KEY` — Zyte API key for deep scraping
 - `APPWRITE_PROJECT_ID` — Appwrite project ID

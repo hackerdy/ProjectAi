@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { createJob, listStyles } from "@/lib/api";
+import { createJob, listJobHistory, listStyles, downloadJobDocx } from "@/lib/api";
 import { useJobStatus } from "@/lib/useJobStatus";
 import { AgentStatusBar } from "@/components/AgentStatusBar";
-import { Style, JobStatus } from "@/types";
+import { Style, JobHistoryItem, JobStatus } from "@/types";
 import Link from "next/link";
 
 const DEFAULT_STYLES: Style[] = [
@@ -23,6 +23,9 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [finalDocument, setFinalDocument] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
+  const [history, setHistory] = useState<JobHistoryItem[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [downloadingJobId, setDownloadingJobId] = useState<string | null>(null);
 
   useEffect(() => {
     listStyles()
@@ -34,6 +37,20 @@ export default function DashboardPage() {
       });
   }, []);
 
+  const refreshHistory = useCallback(async () => {
+    try {
+      const items = await listJobHistory(30);
+      setHistory(items);
+      setHistoryError(null);
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : "Failed to load history");
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshHistory();
+  }, [refreshHistory]);
+
   const handleCompleted = useCallback((doc: string) => {
     setFinalDocument(doc);
     setJobStatus("completed");
@@ -44,7 +61,7 @@ export default function DashboardPage() {
     setJobStatus("failed");
   }, []);
 
-  const { status, currentAgent, isConnected } = useJobStatus({
+  const { status, progressPercent, currentAgent, isConnected } = useJobStatus({
     jobId,
     onCompleted: handleCompleted,
     onFailed: handleFailed,
@@ -66,6 +83,7 @@ export default function DashboardPage() {
       const result = await createJob(topic.trim(), selectedStyleId);
       setJobId(result.job_id);
       setJobStatus(result.status as JobStatus);
+      await refreshHistory();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start job");
     } finally {
@@ -85,6 +103,34 @@ export default function DashboardPage() {
   const isRunning =
     effectiveStatus &&
     !["completed", "failed"].includes(effectiveStatus);
+
+  const handleDownloadFromHistory = useCallback(
+    async (item: JobHistoryItem) => {
+      setDownloadingJobId(item.job_id);
+      try {
+        const safeName = item.topic.slice(0, 50).replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "_");
+        await downloadJobDocx(item.job_id, `${safeName || "research_paper"}.docx`);
+      } catch (err) {
+        setHistoryError(err instanceof Error ? err.message : "Failed to download document");
+      } finally {
+        setDownloadingJobId(null);
+      }
+    },
+    []
+  );
+
+  const handleDownloadCurrent = useCallback(async () => {
+    if (!jobId) return;
+    setDownloadingJobId(jobId);
+    try {
+      const safeName = topic.slice(0, 50).replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "_");
+      await downloadJobDocx(jobId, `${safeName || "research_paper"}.docx`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to download document");
+    } finally {
+      setDownloadingJobId(null);
+    }
+  }, [jobId, topic]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -247,6 +293,19 @@ export default function DashboardPage() {
                   status={effectiveStatus ?? "planning"}
                   currentAgent={currentAgent ?? "planner"}
                 />
+
+                <div className="mt-4">
+                  <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+                    <span>Completion</span>
+                    <span>{progressPercent}%</span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-slate-700 overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 transition-all duration-500"
+                      style={{ width: `${Math.max(0, Math.min(100, progressPercent))}%` }}
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Status message */}
@@ -294,18 +353,18 @@ export default function DashboardPage() {
                 </div>
                 <div className="flex gap-3">
                   <button
-                    onClick={() => {
-                      const blob = new Blob([finalDocument], { type: "text/markdown" });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = `${topic.slice(0, 30).replace(/\s+/g, "_")}.md`;
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    }}
-                    className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors"
+                    onClick={handleDownloadCurrent}
+                    disabled={downloadingJobId === jobId}
+                    className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors flex items-center gap-2"
                   >
-                    ⬇️ Download .md
+                    {downloadingJobId === jobId ? (
+                      <>
+                        <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
+                        Generating .docx…
+                      </>
+                    ) : (
+                      "⬇️ Download .docx"
+                    )}
                   </button>
                   <button
                     onClick={handleReset}
@@ -325,6 +384,68 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
+
+        <div className="max-w-4xl mx-auto mt-10">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white">Job History</h3>
+              <button
+                onClick={refreshHistory}
+                className="bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium rounded-md px-3 py-2 transition-colors"
+              >
+                Refresh
+              </button>
+            </div>
+
+            {historyError && (
+              <div className="mb-4 bg-red-900/30 border border-red-700 rounded-lg px-4 py-3 text-red-300 text-sm">
+                {historyError}
+              </div>
+            )}
+
+            {history.length === 0 ? (
+              <p className="text-slate-400 text-sm">No jobs yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-slate-400 border-b border-slate-700">
+                      <th className="text-left py-2 pr-2">Topic</th>
+                      <th className="text-left py-2 pr-2">Status</th>
+                      <th className="text-left py-2 pr-2">Progress</th>
+                      <th className="text-left py-2 pr-2">Updated</th>
+                      <th className="text-right py-2">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map((item) => (
+                      <tr key={item.job_id} className="border-b border-slate-800 text-slate-200 align-top">
+                        <td className="py-3 pr-2">
+                          <div className="max-w-md">
+                            <p className="line-clamp-2">{item.topic}</p>
+                            <p className="text-xs text-slate-500 mt-1">{item.job_id}</p>
+                          </div>
+                        </td>
+                        <td className="py-3 pr-2">{item.status}</td>
+                        <td className="py-3 pr-2">{item.progress_percent}%</td>
+                        <td className="py-3 pr-2 text-slate-400">{new Date(item.updated_at).toLocaleString()}</td>
+                        <td className="py-3 text-right">
+                          <button
+                            onClick={() => handleDownloadFromHistory(item)}
+                            disabled={!item.has_final_document || downloadingJobId === item.job_id}
+                            className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white text-xs font-medium rounded-md px-3 py-2 transition-colors"
+                          >
+                            {downloadingJobId === item.job_id ? "Generating…" : "⬇️ .docx"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
       </main>
     </div>
   );

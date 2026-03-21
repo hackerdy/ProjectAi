@@ -12,6 +12,7 @@ interface UseJobStatusOptions {
 
 interface UseJobStatusReturn {
   status: JobStatus | null;
+  progressPercent: number;
   currentAgent: string;
   isConnected: boolean;
   messages: WebSocketMessage[];
@@ -27,6 +28,7 @@ export function useJobStatus({
   pollInterval = 3000,
 }: UseJobStatusOptions): UseJobStatusReturn {
   const [status, setStatus] = useState<JobStatus | null>(null);
+  const [progressPercent, setProgressPercent] = useState(0);
   const [currentAgent, setCurrentAgent] = useState("");
   const [isConnected, setIsConnected] = useState(false);
   const [messages, setMessages] = useState<WebSocketMessage[]>([]);
@@ -39,6 +41,9 @@ export function useJobStatus({
 
       if (msg.status) {
         setStatus(msg.status);
+      }
+      if (typeof msg.progress_percent === "number") {
+        setProgressPercent(msg.progress_percent);
       }
       if (msg.current_agent) {
         setCurrentAgent(msg.current_agent);
@@ -86,9 +91,9 @@ export function useJobStatus({
     };
   }, [jobId, handleMessage]);
 
-  // Fallback polling for when WebSocket is not connected
+  // Poll job snapshot regularly so status/progress remain visible even without granular WS events.
   useEffect(() => {
-    if (!jobId || isConnected) {
+    if (!jobId) {
       if (pollTimerRef.current) {
         clearInterval(pollTimerRef.current);
         pollTimerRef.current = null;
@@ -104,6 +109,9 @@ export function useJobStatus({
         if (!res.ok) return;
         const job = await res.json();
         setStatus(job.status);
+        if (typeof job.progress_percent === "number") {
+          setProgressPercent(job.progress_percent);
+        }
         setCurrentAgent(job.current_agent ?? "");
 
         if (job.status === "completed" && job.final_document) {
@@ -123,7 +131,7 @@ export function useJobStatus({
         clearInterval(pollTimerRef.current);
       }
     };
-  }, [jobId, isConnected, pollInterval, onCompleted, onFailed]);
+  }, [jobId, pollInterval, onCompleted, onFailed]);
 
-  return { status, currentAgent, isConnected, messages };
+  return { status, progressPercent, currentAgent, isConnected, messages };
 }

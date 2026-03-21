@@ -1,5 +1,5 @@
 import { generateText, generateEmbedding, ORCHESTRATOR_MODEL } from "../lib/gemini.js";
-import { queryByStyleId } from "../lib/pinecone.js";
+import { queryByStyleId, getIndexDimension } from "../lib/pinecone.js";
 import { updateJob } from "../lib/appwrite.js";
 import { AgentState, OutlineSchema } from "./types.js";
 
@@ -8,12 +8,15 @@ export async function plannerAgent(state: AgentState): Promise<Partial<AgentStat
 
   await updateJob(state.job_id, {
     status: "planning",
+    progress_percent: 10,
     current_agent: "planner",
   });
 
   // Query Pinecone for style-specific guidelines
+  const indexDimension = await getIndexDimension();
   const queryEmbedding = await generateEmbedding(
-    `style guidelines formatting rules ${state.style_id} ${state.topic}`
+    `style guidelines formatting rules ${state.style_id} ${state.topic}`,
+    indexDimension
   );
 
   const styleChunks = await queryByStyleId(queryEmbedding, state.style_id, 15);
@@ -76,11 +79,13 @@ Return ONLY the JSON object, no markdown code fences.`;
 
   await updateJob(state.job_id, {
     outline: JSON.stringify(outline),
+    progress_percent: 25,
   });
 
   return {
     style_guidelines: styleGuidelines,
     outline,
+    progress_percent: 25,
     status: "researching",
     current_agent: "researcher",
   };

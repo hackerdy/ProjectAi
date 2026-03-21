@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import http from "http";
 import { wsManager } from "./routes/websocket.js";
+import { initializeAppwriteSchema } from "./lib/appwrite.js";
 import jobsRouter from "./routes/jobs.js";
 import adminRouter from "./routes/admin.js";
 
@@ -44,11 +45,20 @@ process.on("uncaughtException", (err) => {
   console.error("[Server] Uncaught Exception:", err);
 });
 
-server.listen(PORT, () => {
-  console.log(`[Server] ProjectAi backend running on port ${PORT}`);
-  console.log(`[Server] WebSocket endpoint: ws://localhost:${PORT}/ws`);
-  console.log(`[Server] API endpoint: http://localhost:${PORT}/api`);
-  console.log(`[Server] Health check: http://localhost:${PORT}/health`);
+async function startServer(): Promise<void> {
+  await initializeAppwriteSchema();
+
+  server.listen(PORT, () => {
+    console.log(`[Server] ProjectAi backend running on port ${PORT}`);
+    console.log(`[Server] WebSocket endpoint: ws://localhost:${PORT}/ws`);
+    console.log(`[Server] API endpoint: http://localhost:${PORT}/api`);
+    console.log(`[Server] Health check: http://localhost:${PORT}/health`);
+  });
+}
+
+startServer().catch((error) => {
+  console.error("[Server] Failed to initialize:", error);
+  process.exit(1);
 });
 
 export default app;

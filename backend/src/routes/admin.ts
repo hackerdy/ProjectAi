@@ -1,11 +1,20 @@
 import { Router, Request, Response } from "express";
 import multer from "multer";
 import { z } from "zod";
-import { storage as appwriteStorage, BUCKET_ID, createStyle, listStyles } from "../lib/appwrite.js";
+import mammoth from "mammoth";
+import {
+  storage as appwriteStorage,
+  BUCKET_ID,
+  createStyle,
+  ID,
+  listStyles,
+} from "../lib/appwrite.js";
 import { generateEmbedding } from "../lib/gemini.js";
-import { upsertChunks, ChunkMetadata } from "../lib/pinecone.js";
-import { ID } from "appwrite";
+import { upsertChunks, ChunkMetadata, getIndexDimension } from "../lib/pinecone.js";
 import { v4 as uuidv4 } from "uuid";
+
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const DOC_MIME  = "application/msword";
 
 const router = Router();
 
@@ -14,11 +23,21 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
   fileFilter: (_req, file, cb) => {
-    const allowed = ["application/pdf", "text/plain", "text/markdown"];
+    const allowed = [
+      "application/pdf",
+      "text/plain",
+      "text/markdown",
+      DOCX_MIME,
+      DOC_MIME,
+    ];
     if (allowed.includes(file.mimetype)) {
-      cb(null, true);
+      if (file.mimetype === DOC_MIME) {
+        cb(new Error("Legacy .doc format is not supported. Please convert your file to .docx and re-upload."));
+      } else {
+        cb(null, true);
+      }
     } else {
-      cb(new Error("Only PDF, TXT, and Markdown files are allowed"));
+      cb(new Error("Only PDF, DOCX, TXT, and Markdown files are allowed"));
     }
   },
 });
@@ -28,6 +47,18 @@ const UploadStyleSchema = z.object({
   style_name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
 });
+
+async function runUploadMiddleware(req: Request, res: Response): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    upload.single("document")(req, res, (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve();
+    });
+  });
+}
 
 function chunkText(text: string, chunkSize = 800, overlap = 100): string[] {
   const words = text.split(/\s+/);
@@ -50,6 +81,19 @@ async function extractText(buffer: Buffer, mimetype: string): Promise<string> {
     const data = await pdfParse(buffer);
     return data.text;
   }
+
+  if (mimetype === DOCX_MIME) {
+    const result = await mammoth.extractRawText({ buffer });
+    if (result.messages.length > 0) {
+      result.messages.forEach((msg) => {
+        if (msg.type === "warning") {
+          console.warn(`[Admin] mammoth warning: ${msg.message}`);
+        }
+      });
+    }
+    return result.value;
+  }
+
   // Plain text or markdown
   return buffer.toString("utf-8");
 }
@@ -57,8 +101,21 @@ async function extractText(buffer: Buffer, mimetype: string): Promise<string> {
 // POST /api/admin/upload — Upload a reference document and ingest it
 router.post(
   "/upload",
-  upload.single("document"),
   async (req: Request, res: Response) => {
+    try {
+      await runUploadMiddleware(req, res);
+    } catch (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({ error: "File is too large. Maximum size is 50MB." });
+        }
+        return res.status(400).json({ error: err.message });
+      }
+
+      const message = err instanceof Error ? err.message : "Invalid upload request";
+      return res.status(400).json({ error: message });
+    }
+
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
     }
@@ -95,6 +152,11 @@ router.post(
 
       // 4. Generate embeddings and upsert to Pinecone
       console.log(`[Admin] Generating embeddings and upserting to Pinecone...`);
+      const indexDimension = await getIndexDimension();
+      if (indexDimension) {
+        console.log(`[Admin] Using embedding output dimensionality: ${indexDimension}`);
+      }
+
       const vectors: Array<{
         id: string;
         values: number[];
@@ -102,7 +164,7 @@ router.post(
       }> = [];
 
       for (let i = 0; i < chunks.length; i++) {
-        const embedding = await generateEmbedding(chunks[i]);
+        const embedding = await generateEmbedding(chunks[i], indexDimension);
         vectors.push({
           id: `${documentId}-chunk-${i}`,
           values: embedding,

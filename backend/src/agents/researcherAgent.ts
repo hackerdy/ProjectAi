@@ -13,6 +13,19 @@ interface ZyteResult {
   text: string;
 }
 
+let zyteAuthUnavailable = false;
+
+function getZyteApiKey(): string {
+  return (process.env.ZYTE_API_KEY ?? "").trim().replace(/^['\"]|['\"]$/g, "");
+}
+
+class ZyteAuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ZyteAuthError";
+  }
+}
+
 async function searchTavily(query: string): Promise<TavilyResult[]> {
   if (!process.env.TAVILY_API_KEY) {
     console.warn("[Researcher] TAVILY_API_KEY not set, skipping Tavily search");
@@ -43,25 +56,38 @@ async function searchTavily(query: string): Promise<TavilyResult[]> {
 }
 
 async function scrapeWithZyte(url: string): Promise<ZyteResult | null> {
-  if (!process.env.ZYTE_API_KEY) {
-    console.warn("[Researcher] ZYTE_API_KEY not set, skipping Zyte scrape");
+  if (zyteAuthUnavailable) {
     return null;
+  }
+
+  const apiKey = getZyteApiKey();
+  if (!apiKey) {
+    throw new ZyteAuthError(
+      "ZYTE_API_KEY is missing. Set a valid Zyte API key from https://app.zyte.com (API section)."
+    );
   }
 
   const response = await fetch("https://api.zyte.com/v1/extract", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Basic ${Buffer.from(`${process.env.ZYTE_API_KEY}:`).toString("base64")}`,
+      Authorization: `Basic ${Buffer.from(`${apiKey}:`).toString("base64")}`,
     },
     body: JSON.stringify({
       url,
       article: true,
-      articleOptions: { extractFrom: "article" },
     }),
   });
 
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      zyteAuthUnavailable = true;
+      const body = await response.text();
+      throw new ZyteAuthError(
+        `Zyte authentication failed (${response.status}). Response: ${body.slice(0, 300)}`
+      );
+    }
+
     console.error(
       `[Researcher] Zyte scrape failed for ${url}: ${response.status}`
     );
@@ -70,7 +96,9 @@ async function scrapeWithZyte(url: string): Promise<ZyteResult | null> {
 
   const data = await response.json() as { article?: { bodyText?: string } };
   const text = data.article?.bodyText;
-  if (!text) return null;
+  if (!text) {
+    return null;
+  }
 
   return { url, text };
 }
@@ -86,14 +114,21 @@ export async function researcherAgent(
 
   await updateJob(state.job_id, {
     status: "researching",
+    progress_percent: 35,
     current_agent: "researcher",
   });
 
   const queries = state.outline.research_queries;
   const allResults: string[] = [];
 
-  for (const query of queries) {
+  for (let queryIndex = 0; queryIndex < queries.length; queryIndex++) {
+    const query = queries[queryIndex];
     console.log(`[Researcher] Searching: "${query}"`);
+
+    const queryProgress = 35 + Math.round(((queryIndex + 1) / Math.max(queries.length, 1)) * 20);
+    await updateJob(state.job_id, {
+      progress_percent: queryProgress,
+    });
 
     const tavilyResults = await searchTavily(query);
 
@@ -104,11 +139,20 @@ export async function researcherAgent(
 
       // Attempt deep scrape for top result
       if (result.score > 0.7) {
-        const scraped = await scrapeWithZyte(result.url);
-        if (scraped) {
-          allResults.push(
-            `### Deep Scrape of ${scraped.url}\n\n${scraped.text.slice(0, 3000)}`
-          );
+        try {
+          const scraped = await scrapeWithZyte(result.url);
+          if (scraped) {
+            allResults.push(
+              `### Deep Scrape of ${scraped.url}\n\n${scraped.text.slice(0, 3000)}`
+            );
+          }
+        } catch (error) {
+          if (error instanceof ZyteAuthError) {
+            throw new Error(
+              `[Researcher] ${error.message} Verify that ZYTE_API_KEY is a Zyte API key (not Scrapy Cloud project credentials) and regenerate it if needed.`
+            );
+          }
+          throw error;
         }
       }
     }
@@ -129,10 +173,12 @@ export async function researcherAgent(
 
   await updateJob(state.job_id, {
     research: compiledResearch,
+    progress_percent: 55,
   });
 
   return {
     research_results: compiledResearch,
+    progress_percent: 55,
     status: "writing",
     current_agent: "writer",
   };

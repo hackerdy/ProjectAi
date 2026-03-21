@@ -23,8 +23,9 @@ import "dotenv/config";
 import { readFileSync, existsSync } from "fs";
 import { resolve, extname } from "path";
 import { v4 as uuidv4 } from "uuid";
+import mammoth from "mammoth";
 import { generateEmbedding } from "../lib/gemini.js";
-import { upsertChunks, ChunkMetadata, getPineconeIndex } from "../lib/pinecone.js";
+import { upsertChunks, ChunkMetadata, getPineconeIndex, getIndexDimension } from "../lib/pinecone.js";
 import { createStyle } from "../lib/appwrite.js";
 
 // --- CLI Argument Parsing ---
@@ -77,11 +78,29 @@ async function extractTextFromFile(filePath: string): Promise<string> {
     return data.text;
   }
 
+  if (ext === ".docx") {
+    const result = await mammoth.extractRawText({ buffer });
+    if (result.messages.length > 0) {
+      result.messages.forEach((msg) => {
+        if (msg.type === "warning") {
+          console.warn(`  ⚠ mammoth warning: ${msg.message}`);
+        }
+      });
+    }
+    return result.value;
+  }
+
+  if (ext === ".doc") {
+    throw new Error(
+      "Legacy .doc format is not supported. Please convert your file to .docx and re-upload."
+    );
+  }
+
   if (ext === ".txt" || ext === ".md" || ext === ".markdown") {
     return buffer.toString("utf-8");
   }
 
-  throw new Error(`Unsupported file type: ${ext}. Supported: .pdf, .txt, .md`);
+  throw new Error(`Unsupported file type: ${ext}. Supported: .pdf, .docx, .txt, .md`);
 }
 
 // --- Text Chunking ---
@@ -154,6 +173,14 @@ async function ingestDocument(config: IngestConfig): Promise<void> {
     throw new Error(`File not found: ${resolvedPath}`);
   }
 
+  const ext = extname(resolvedPath).toLowerCase();
+  const supported = [".pdf", ".docx", ".txt", ".md", ".markdown"];
+  if (!supported.includes(ext)) {
+    throw new Error(
+      `Unsupported file extension "${ext}". Supported formats: ${supported.join(", ")}`
+    );
+  }
+
   console.log(`\n${"=".repeat(60)}`);
   console.log(`📄 Processing: ${resolvedPath}`);
   console.log(`🏷️  Style ID: ${style_id}`);
@@ -178,6 +205,10 @@ async function ingestDocument(config: IngestConfig): Promise<void> {
 
   // Step 3: Generate embeddings and build Pinecone vectors
   console.log("Step 3/4: Generating embeddings with Gemini...");
+  const indexDimension = await getIndexDimension();
+  if (indexDimension) {
+    console.log(`  ℹ️  Pinecone index dimension detected: ${indexDimension}`);
+  }
   const vectors: Array<{
     id: string;
     values: number[];
@@ -189,7 +220,7 @@ async function ingestDocument(config: IngestConfig): Promise<void> {
       `  Embedding chunk ${i + 1}/${chunks.length}...\r`
     );
 
-    const embedding = await generateEmbedding(chunks[i]);
+    const embedding = await generateEmbedding(chunks[i], indexDimension);
 
     /**
      * CRITICAL: Every embedded chunk must include metadata tagging its style.
@@ -285,7 +316,7 @@ async function main(): Promise<void> {
     if (!args.style_id || !args.style_name || !args.file) {
       console.error("❌ Missing required arguments.\n");
       console.error(
-        "Usage: npx tsx src/scripts/ingestDocuments.ts --file <path> --style_id <id> --style_name <name> [--description <desc>]"
+        "Usage: npx tsx src/scripts/ingestDocuments.ts --file <path.pdf|.docx|.txt|.md> --style_id <id> --style_name <name> [--description <desc>]"
       );
       console.error(
         "   Or: npx tsx src/scripts/ingestDocuments.ts --config <path>"

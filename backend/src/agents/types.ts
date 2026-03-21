@@ -32,6 +32,7 @@ export interface AgentState {
   chapter_drafts: string[];
   final_document: string;
   revision_count: number;
+  progress_percent: number;
   status:
     | "planning"
     | "researching"
@@ -58,6 +59,7 @@ export const initialAgentState = (
   chapter_drafts: [],
   final_document: "",
   revision_count: 0,
+  progress_percent: 0,
   status: "planning",
   current_agent: "planner",
   error_message: "",

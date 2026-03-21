@@ -25,6 +25,7 @@ export async function reviewerAgent(
 
   await updateJob(state.job_id, {
     status: "reviewing",
+    progress_percent: 92,
     current_agent: "reviewer",
   });
 
@@ -95,12 +96,14 @@ Return ONLY the JSON object.`;
     const finalDocument = appendReviewMetadata(state.final_document, review);
     await updateJob(state.job_id, {
       status: "completed",
+      progress_percent: 100,
       current_agent: "completed",
       final_document: finalDocument,
     });
 
     return {
       final_document: finalDocument,
+      progress_percent: 100,
       status: "completed",
       current_agent: "completed",
     };
@@ -113,11 +116,13 @@ Return ONLY the JSON object.`;
 
   await updateJob(state.job_id, {
     status: "writing",
+    progress_percent: 70,
     current_agent: "writer",
   });
 
   return {
     status: "writing",
+    progress_percent: 70,
     current_agent: "writer",
     revision_count: state.revision_count + 1,
     current_chapter_index: 0,

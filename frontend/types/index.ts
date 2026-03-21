@@ -12,6 +12,7 @@ export interface Job {
   topic: string;
   style_id: string;
   status: JobStatus;
+  progress_percent: number;
   current_agent: string;
   outline: string;
   research: string;
@@ -33,10 +34,24 @@ export interface Style {
 export interface CreateJobResponse {
   job_id: string;
   status: JobStatus;
+  progress_percent: number;
   topic: string;
   style_id: string;
   created_at: string;
   message: string;
+}
+
+export interface JobHistoryItem {
+  job_id: string;
+  topic: string;
+  style_id: string;
+  status: JobStatus;
+  progress_percent: number;
+  current_agent: string;
+  has_final_document: boolean;
+  created_at: string;
+  updated_at: string;
+  error_message: string;
 }
 
 export interface WebSocketMessage {
@@ -48,6 +63,7 @@ export interface WebSocketMessage {
     | "agent_progress";
   job_id?: string;
   status?: JobStatus;
+  progress_percent?: number;
   current_agent?: string;
   message?: string;
   final_document?: string;

@@ -1,5 +1,7 @@
 import { Pinecone, type RecordMetadata } from "@pinecone-database/pinecone";
 
+let cachedIndexDimension: number | undefined;
+
 if (!process.env.PINECONE_API_KEY) {
   throw new Error("PINECONE_API_KEY environment variable is required");
 }
@@ -29,6 +31,19 @@ export async function upsertChunks(
 ): Promise<void> {
   const index = getPineconeIndex();
   await index.upsert(chunks);
+}
+
+export async function getIndexDimension(): Promise<number | undefined> {
+  if (cachedIndexDimension !== undefined) return cachedIndexDimension;
+  try {
+    const description = await pinecone.describeIndex(INDEX_NAME);
+    cachedIndexDimension = description.dimension;
+    console.log(`[Pinecone] Index dimension detected: ${cachedIndexDimension}`);
+    return cachedIndexDimension;
+  } catch (err) {
+    console.warn("[Pinecone] Could not detect index dimension:", err);
+    return undefined;
+  }
 }
 
 export async function queryByStyleId(

@@ -147,7 +147,7 @@ export default function AdminPage() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.txt,.md"
+                  accept=".pdf,.docx,.txt,.md"
                   onChange={handleFileChange}
                   className="hidden"
                 />
@@ -177,7 +177,7 @@ export default function AdminPage() {
                       Drop your file here or click to browse
                     </p>
                     <p className="text-slate-500 text-sm mt-1">
-                      Supports PDF, TXT, Markdown — max 50MB
+                      Supports PDF, DOCX, TXT, Markdown — max 50MB
                     </p>
                   </div>
                 )}
@@ -300,7 +300,16 @@ export default function AdminPage() {
           </h4>
           <ol className="list-decimal list-inside space-y-1">
             <li>Document text is extracted and split into ~800-word semantic chunks</li>
-            <li>Each chunk is embedded using Gemini text-embedding-004</li>
+            <li>
+              Supported formats: <strong className="text-slate-300">PDF, DOCX, TXT, Markdown</strong>
+              {" "}— legacy <code className="text-blue-400">.doc</code> must be converted to{" "}
+              <code className="text-blue-400">.docx</code> first
+            </li>
+            <li>Each chunk is embedded using Gemini <code className="text-blue-400">gemini-embedding-001</code></li>
+            <li>
+              Embedding dimensions are <strong className="text-slate-300">auto-matched</strong> to
+              your Pinecone index size (no manual configuration needed)
+            </li>
             <li>
               Vectors are upserted to Pinecone with{" "}
               <code className="text-blue-400">style_id</code> metadata
